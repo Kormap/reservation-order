@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: reservation-order
+  config:
+    import: optional:file:.env[.properties]
+
+  jackson:
+    time-zone: Asia/Seoul
+
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: Asia/Seoul
+
+  flyway:
+    enabled: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      database: 1
+
+  session:
+    timeout: 30m
+    redis:
+      namespace: reservation-order:session
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
