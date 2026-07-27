@@ -24,19 +24,19 @@ public class OpenApiConfig {
 
     @Bean
     OpenAPI openAPI() {
-        String schemeName = "sessionCookie";
+        String csrfSchemeName = "csrfToken";
+
         return new OpenAPI()
                 .info(new Info()
                         .title("Reservation Order API")
                         .version("v1")
                         .description("회원, 상품, 재고, 예약 주문 MVP API. 로그인 후 발급되는 SESSION 쿠키로 인증합니다."))
-                .addSecurityItem(new SecurityRequirement().addList(schemeName))
-                .components(new Components().addSecuritySchemes(schemeName,
+                .addSecurityItem(new SecurityRequirement().addList(csrfSchemeName))
+                .components(new Components().addSecuritySchemes(csrfSchemeName,
                         new SecurityScheme()
-                                .name(schemeName)
                                 .type(SecurityScheme.Type.APIKEY)
-                                .in(SecurityScheme.In.COOKIE)
-                                .name("SESSION")))
+                                .in(SecurityScheme.In.HEADER)
+                                .name("X-XSRF-TOKEN")))
                 .paths(new Paths().addPathItem("/api/v1/auth/login", new PathItem()
                         .post(new Operation()
                                 .tags(List.of("인증"))

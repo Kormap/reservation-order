@@ -15,12 +15,15 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.authentication.session.SessionFixationProtectionStrategy;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
-import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
 @Configuration
 public class SecurityConfig {
@@ -30,7 +33,8 @@ public class SecurityConfig {
                                             AuthenticationManager authenticationManager,
                                             ObjectMapper objectMapper,
                                             Validator validator,
-                                            SecurityContextRepository securityContextRepository) throws Exception {
+                                            SecurityContextRepository securityContextRepository,
+                                            CsrfTokenRepository csrfTokenRepository) throws Exception {
         LoginAuthenticationFilter loginFilter =
                 new LoginAuthenticationFilter(
                         authenticationManager,
@@ -41,6 +45,9 @@ public class SecurityConfig {
         loginFilter.setSecurityContextRepository(securityContextRepository);
         loginFilter.setSessionAuthenticationStrategy(new SessionFixationProtectionStrategy());
         loginFilter.setAuthenticationSuccessHandler((request, response, authentication) -> {
+            CsrfToken csrfToken = csrfTokenRepository.generateToken(request);
+            csrfTokenRepository.saveToken(csrfToken, request, response);
+
             response.setStatus(200);
             response.setContentType("application/json");
             objectMapper.writeValue(response.getOutputStream(), new LoginResponse(authentication.getName()));
@@ -57,7 +64,8 @@ public class SecurityConfig {
 
         http
                 .csrf(csrf -> csrf
-                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                        .csrfTokenRepository(csrfTokenRepository)
+                        .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                         .ignoringRequestMatchers("/api/v1/auth/signup", "/api/v1/auth/login")
                 )
                 .sessionManagement(session -> session
@@ -73,7 +81,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/**",
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
-                                "/v3/api-docs/**",
+                "/v3/api-docs/**",
                                 "/actuator/health"
                         ).permitAll()
                         .anyRequest().authenticated()
@@ -85,7 +93,8 @@ public class SecurityConfig {
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
                             response.sendError(HttpServletResponse.SC_FORBIDDEN);
                         })
-                );
+                )
+                .requestCache(requestCache -> requestCache.disable());
         return http.build();
     }
 
@@ -102,5 +111,10 @@ public class SecurityConfig {
     @Bean
     SecurityContextRepository securityContextRepository() {
         return new HttpSessionSecurityContextRepository();
+    }
+
+    @Bean
+    CsrfTokenRepository csrfTokenRepository() {
+        return CookieCsrfTokenRepository.withHttpOnlyFalse();
     }
 }
