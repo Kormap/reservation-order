@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Validator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -77,11 +78,14 @@ public class SecurityConfig {
                         .requireExplicitSave(true)
                 )
                 .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/inventories/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/orders").hasRole("MEMBER")
                         .requestMatchers(
                                 "/api/v1/auth/**",
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
-                "/v3/api-docs/**",
+                                "/v3/api-docs/**",
                                 "/actuator/health"
                         ).permitAll()
                         .anyRequest().authenticated()

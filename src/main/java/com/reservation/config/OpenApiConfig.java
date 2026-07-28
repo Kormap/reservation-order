@@ -14,6 +14,7 @@ import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
+import io.swagger.v3.oas.models.tags.Tag;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -37,9 +38,16 @@ public class OpenApiConfig {
                                 .type(SecurityScheme.Type.APIKEY)
                                 .in(SecurityScheme.In.HEADER)
                                 .name("X-XSRF-TOKEN")))
+                .tags(List.of(
+                        new Tag().name("01. 인증").description("회원가입, 로그인, 로그아웃 API"),
+                        new Tag().name("02. 회원").description("현재 로그인 회원 조회 API"),
+                        new Tag().name("03. 상품").description("상품 등록 및 조회 API"),
+                        new Tag().name("04. 재고").description("상품별 가용 재고 조회 및 관리 API"),
+                        new Tag().name("05. 예약 주문").description("예약 주문 생성, 조회, 취소 API")
+                ))
                 .paths(new Paths().addPathItem("/api/v1/auth/login", new PathItem()
                         .post(new Operation()
-                                .tags(List.of("인증"))
+                                .tags(List.of("01. 인증"))
                                 .summary("로그인")
                                 .description("이메일과 비밀번호로 로그인하고 SESSION 쿠키를 발급합니다.")
                                 .security(List.of())

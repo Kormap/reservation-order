@@ -1,28 +1,30 @@
 package com.reservation;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.reservation.member.domain.Member;
+import com.reservation.member.domain.MemberRepository;
+import com.reservation.member.domain.MemberRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -50,6 +52,12 @@ class ReservationOrderApiIntegrationTest {
 
     @Autowired
     ObjectMapper objectMapper;
+
+    @Autowired
+    MemberRepository memberRepository;
+
+    @Autowired
+    PasswordEncoder passwordEncoder;
 
     @Test
     void 잘못된_로그인_정보는_401을_반환한다() throws Exception {
@@ -82,27 +90,14 @@ class ReservationOrderApiIntegrationTest {
 
     @Test
     void 회원가입부터_예약과_취소까지_처리한다() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/signup")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"email":"member@example.com","password":"password123","name":"회원"}
-                                """))
-                .andExpect(status().isCreated());
-
-        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"email":"member@example.com","password":"password123"}
-                                """))
-                .andExpect(status().isOk())
-                .andReturn();
-        MockHttpSession session = (MockHttpSession) loginResult.getRequest().getSession(false);
+        MockHttpSession adminSession = createAdminAndLogin("mvp-admin@example.com", "관리자");
+        MockHttpSession memberSession = signUpAndLogin("member@example.com", "회원");
 
         mockMvc.perform(get("/api/v1/products"))
                 .andExpect(status().isUnauthorized());
 
         MvcResult productResult = mockMvc.perform(post("/api/v1/products")
-                        .session(session)
+                        .session(adminSession)
                         .with(SecurityMockMvcRequestPostProcessors.csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -113,7 +108,7 @@ class ReservationOrderApiIntegrationTest {
         long productId = objectMapper.readTree(productResult.getResponse().getContentAsString()).get("id").asLong();
 
         MvcResult orderResult = mockMvc.perform(post("/api/v1/orders")
-                        .session(session)
+                        .session(memberSession)
                         .with(SecurityMockMvcRequestPostProcessors.csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -126,19 +121,121 @@ class ReservationOrderApiIntegrationTest {
         long orderId = objectMapper.readTree(orderResult.getResponse().getContentAsString()).get("id").asLong();
 
         mockMvc.perform(get("/api/v1/inventories/{productId}", productId)
-                        .session(session))
+                        .session(memberSession))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.quantity").value(7));
 
         mockMvc.perform(post("/api/v1/orders/{orderId}/cancel", orderId)
-                        .session(session)
+                        .session(memberSession)
                         .with(SecurityMockMvcRequestPostProcessors.csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CANCELLED"));
 
         mockMvc.perform(get("/api/v1/inventories/{productId}", productId)
-                        .session(session))
+                        .session(memberSession))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.quantity").value(10));
+    }
+
+    @Test
+    void 역할에_따라_상품_재고_주문_생성_권한을_분리한다() throws Exception {
+        MockHttpSession adminSession = createAdminAndLogin("admin@example.com", "관리자");
+        MockHttpSession memberSession = signUpAndLogin("role-member@example.com", "회원");
+
+        mockMvc.perform(post("/api/v1/products")
+                        .session(memberSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"권한 상품","price":10000,"initialStock":10}
+                                """))
+                .andExpect(status().isForbidden());
+
+        MvcResult productResult = mockMvc.perform(post("/api/v1/products")
+                        .session(adminSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"권한 상품","price":10000,"initialStock":10}
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long productId = objectMapper.readTree(productResult.getResponse().getContentAsString()).get("id").asLong();
+
+        mockMvc.perform(patch("/api/v1/inventories/{productId}", productId)
+                        .session(memberSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"quantity":20}
+                                """))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(patch("/api/v1/inventories/{productId}", productId)
+                        .session(adminSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"quantity":20}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(20));
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .session(adminSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{"productId":%d,"quantity":1}]}
+                                """.formatted(productId)))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .session(memberSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{"productId":%d,"quantity":1}]}
+                                """.formatted(productId)))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void 공개_회원가입은_MEMBER로_등록한다() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"public-member@example.com","password":"password123","name":"회원"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.role").value("MEMBER"));
+    }
+
+    private MockHttpSession signUpAndLogin(String email, String name) throws Exception {
+        mockMvc.perform(post("/api/v1/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"%s","password":"password123","name":"%s"}
+                                """.formatted(email, name)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.role").value("MEMBER"));
+
+        return login(email);
+    }
+
+    private MockHttpSession createAdminAndLogin(String email, String name) throws Exception {
+        memberRepository.save(new Member(email, passwordEncoder.encode("password123"), name, MemberRole.ADMIN));
+        return login(email);
+    }
+
+    private MockHttpSession login(String email) throws Exception {
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"%s","password":"password123"}
+                                """.formatted(email)))
+                .andExpect(status().isOk())
+                .andReturn();
+        return (MockHttpSession) loginResult.getRequest().getSession(false);
     }
 }

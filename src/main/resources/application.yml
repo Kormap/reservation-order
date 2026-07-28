@@ -44,3 +44,4 @@ management:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+    tags-sorter: alpha
