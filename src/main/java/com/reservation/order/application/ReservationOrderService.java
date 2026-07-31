@@ -43,7 +43,8 @@ public class ReservationOrderService {
     public OrderResponse reserve(String email, CreateRequest request) {
         validateDuplicateProducts(request.items());
         Member member = findMember(email);
-        ReservationOrder order = new ReservationOrder(member, request.deliveryAddress().trim());
+        ReservationOrder order = new ReservationOrder(member, request.recipientName().trim(),
+                request.deliveryAddress().trim(), request.contactPhoneNumber().trim(), request.deliveryRequest());
 
         for (ItemRequest itemRequest : request.items()) {
             Product product = productRepository.findById(itemRequest.productId())
@@ -106,7 +107,8 @@ public class ReservationOrderService {
                 .map(item -> new ItemResponse(item.getProductId(), item.getProductName(), item.getUnitPrice(),
                         item.getQuantity(), item.getLineAmount()))
                 .toList();
-        return new OrderResponse(order.getId(), order.getStatus().name(), order.getTotalAmount(), order.getDeliveryAddress(),
-                order.getCreatedAt(), order.getCancelledAt(), items);
+        return new OrderResponse(order.getId(), order.getStatus().name(), order.getTotalAmount(),
+                order.getRecipientName(), order.getDeliveryAddress(), order.getContactPhoneNumber(),
+                order.getDeliveryRequest(), order.getCreatedAt(), order.getCancelledAt(), items);
     }
 }

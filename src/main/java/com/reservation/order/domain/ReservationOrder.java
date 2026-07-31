@@ -44,6 +44,15 @@ public class ReservationOrder {
     @Column(length = 255)
     private String deliveryAddress;
 
+    @Column(length = 20)
+    private String contactPhoneNumber;
+
+    @Column(length = 100)
+    private String recipientName;
+
+    @Column(length = 500)
+    private String deliveryRequest;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -55,11 +64,15 @@ public class ReservationOrder {
     protected ReservationOrder() {
     }
 
-    public ReservationOrder(Member member, String deliveryAddress) {
+    public ReservationOrder(Member member, String recipientName, String deliveryAddress, String contactPhoneNumber,
+                            String deliveryRequest) {
         this.member = member;
         this.status = ReservationOrderStatus.RESERVED;
         this.totalAmount = BigDecimal.ZERO;
+        this.recipientName = recipientName;
         this.deliveryAddress = deliveryAddress;
+        this.contactPhoneNumber = contactPhoneNumber;
+        this.deliveryRequest = deliveryRequest;
         this.createdAt = Instant.now();
     }
 
@@ -82,6 +95,9 @@ public class ReservationOrder {
     public ReservationOrderStatus getStatus() { return status; }
     public BigDecimal getTotalAmount() { return totalAmount; }
     public String getDeliveryAddress() { return deliveryAddress; }
+    public String getContactPhoneNumber() { return contactPhoneNumber; }
+    public String getRecipientName() { return recipientName; }
+    public String getDeliveryRequest() { return deliveryRequest; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getCancelledAt() { return cancelledAt; }
     public List<ReservationOrderItem> getItems() { return Collections.unmodifiableList(items); }

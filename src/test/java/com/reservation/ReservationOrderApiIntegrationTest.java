@@ -140,12 +140,15 @@ class ReservationOrderApiIntegrationTest {
                         .with(SecurityMockMvcRequestPostProcessors.csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"deliveryAddress":"서울시 강남구 테헤란로 1","items":[{"productId":%d,"quantity":3}]}
+                                {"recipientName":"수령인","deliveryAddress":"서울시 강남구 테헤란로 1","contactPhoneNumber":"010-1234-5678","deliveryRequest":"문 앞에 놓아주세요","items":[{"productId":%d,"quantity":3}]}
                                 """.formatted(productId)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("RESERVED"))
                 .andExpect(jsonPath("$.totalAmount").value(30000))
+                .andExpect(jsonPath("$.recipientName").value("수령인"))
                 .andExpect(jsonPath("$.deliveryAddress").value("서울시 강남구 테헤란로 1"))
+                .andExpect(jsonPath("$.contactPhoneNumber").value("010-1234-5678"))
+                .andExpect(jsonPath("$.deliveryRequest").value("문 앞에 놓아주세요"))
                 .andReturn();
         long orderId = objectMapper.readTree(orderResult.getResponse().getContentAsString()).get("id").asLong();
 
@@ -175,7 +178,22 @@ class ReservationOrderApiIntegrationTest {
                         .with(SecurityMockMvcRequestPostProcessors.csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"items":[{"productId":1,"quantity":1}]}
+                                {"recipientName":"수령인","contactPhoneNumber":"010-1234-5678","items":[{"productId":1,"quantity":1}]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void 연락처_없이_주문을_생성할_수_없다() throws Exception {
+        MockHttpSession memberSession = signUpAndLogin("phone-member@example.com", "회원");
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .session(memberSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"recipientName":"수령인","deliveryAddress":"서울시 강남구 테헤란로 1","items":[{"productId":1,"quantity":1}]}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
@@ -230,7 +248,7 @@ class ReservationOrderApiIntegrationTest {
                         .with(SecurityMockMvcRequestPostProcessors.csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"deliveryAddress":"서울시 강남구 테헤란로 1","items":[{"productId":%d,"quantity":1}]}
+                                {"recipientName":"수령인","deliveryAddress":"서울시 강남구 테헤란로 1","contactPhoneNumber":"010-1234-5678","items":[{"productId":%d,"quantity":1}]}
                                 """.formatted(productId)))
                 .andExpect(status().isForbidden());
 
@@ -239,7 +257,7 @@ class ReservationOrderApiIntegrationTest {
                         .with(SecurityMockMvcRequestPostProcessors.csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"deliveryAddress":"서울시 강남구 테헤란로 1","items":[{"productId":%d,"quantity":1}]}
+                                {"recipientName":"수령인","deliveryAddress":"서울시 강남구 테헤란로 1","contactPhoneNumber":"010-1234-5678","items":[{"productId":%d,"quantity":1}]}
                                 """.formatted(productId)))
                 .andExpect(status().isCreated());
     }
