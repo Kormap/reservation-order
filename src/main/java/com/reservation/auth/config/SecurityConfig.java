@@ -4,10 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.reservation.auth.api.AuthDTO.LoginResponse;
 import com.reservation.common.exception.ErrorCode;
 import com.reservation.common.exception.ErrorResponse;
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Validator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationServiceException;
@@ -25,6 +25,7 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.web.servlet.HandlerExceptionResolver;
 
 @Configuration
 public class SecurityConfig {
@@ -35,7 +36,8 @@ public class SecurityConfig {
                                             ObjectMapper objectMapper,
                                             Validator validator,
                                             SecurityContextRepository securityContextRepository,
-                                            CsrfTokenRepository csrfTokenRepository) throws Exception {
+                                            CsrfTokenRepository csrfTokenRepository,
+                                            @Qualifier("handlerExceptionResolver") HandlerExceptionResolver exceptionResolver) throws Exception {
         LoginAuthenticationFilter loginFilter =
                 new LoginAuthenticationFilter(
                         authenticationManager,
@@ -91,12 +93,10 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 ).addFilterAt(loginFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(exception -> exception
-                        .authenticationEntryPoint((request, response, authException) -> {
-                            response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
-                        })
-                        .accessDeniedHandler((request, response, accessDeniedException) -> {
-                            response.sendError(HttpServletResponse.SC_FORBIDDEN);
-                        })
+                        .authenticationEntryPoint((request, response, authException) ->
+                                exceptionResolver.resolveException(request, response, null, authException))
+                        .accessDeniedHandler((request, response, accessDeniedException) ->
+                                exceptionResolver.resolveException(request, response, null, accessDeniedException))
                 )
                 .requestCache(requestCache -> requestCache.disable());
         return http.build();
