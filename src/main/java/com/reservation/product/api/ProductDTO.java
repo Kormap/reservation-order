@@ -1,5 +1,6 @@
 package com.reservation.product.api;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -12,6 +13,7 @@ public final class ProductDTO {
     private ProductDTO() {
     }
 
+    @Schema(name = "ProductCreateRequest")
     public record CreateRequest(
             @NotBlank @Size(max = 150) String name,
             @NotNull @DecimalMin("0.00") BigDecimal price,

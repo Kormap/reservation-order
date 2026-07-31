@@ -60,6 +60,34 @@ class ReservationOrderApiIntegrationTest {
     PasswordEncoder passwordEncoder;
 
     @Test
+    void OpenAPI_요청_스키마가_DTO별로_분리된다() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$['paths']['/api/v1/products']['post']['requestBody']['content']['application/json']['schema']['$ref']")
+                        .value("#/components/schemas/ProductCreateRequest"))
+                .andExpect(jsonPath("$['paths']['/api/v1/orders']['post']['requestBody']['content']['application/json']['schema']['$ref']")
+                        .value("#/components/schemas/ReservationOrderCreateRequest"));
+    }
+
+    @Test
+    void Security_예외를_표준_오류_응답으로_반환한다() throws Exception {
+        mockMvc.perform(get("/api/v1/products"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+
+        MockHttpSession adminSession = createAdminAndLogin("security-admin@example.com", "관리자");
+        mockMvc.perform(post("/api/v1/orders")
+                        .session(adminSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{"productId":1,"quantity":1}]}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+    }
+
+    @Test
     void 잘못된_로그인_정보는_401을_반환한다() throws Exception {
         mockMvc.perform(post("/api/v1/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -112,11 +140,12 @@ class ReservationOrderApiIntegrationTest {
                         .with(SecurityMockMvcRequestPostProcessors.csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"items":[{"productId":%d,"quantity":3}]}
+                                {"deliveryAddress":"서울시 강남구 테헤란로 1","items":[{"productId":%d,"quantity":3}]}
                                 """.formatted(productId)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("RESERVED"))
                 .andExpect(jsonPath("$.totalAmount").value(30000))
+                .andExpect(jsonPath("$.deliveryAddress").value("서울시 강남구 테헤란로 1"))
                 .andReturn();
         long orderId = objectMapper.readTree(orderResult.getResponse().getContentAsString()).get("id").asLong();
 
@@ -135,6 +164,21 @@ class ReservationOrderApiIntegrationTest {
                         .session(memberSession))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.quantity").value(10));
+    }
+
+    @Test
+    void 배송지_없이_주문을_생성할_수_없다() throws Exception {
+        MockHttpSession memberSession = signUpAndLogin("delivery-member@example.com", "회원");
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .session(memberSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{"productId":1,"quantity":1}]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     }
 
     @Test
@@ -186,7 +230,7 @@ class ReservationOrderApiIntegrationTest {
                         .with(SecurityMockMvcRequestPostProcessors.csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"items":[{"productId":%d,"quantity":1}]}
+                                {"deliveryAddress":"서울시 강남구 테헤란로 1","items":[{"productId":%d,"quantity":1}]}
                                 """.formatted(productId)))
                 .andExpect(status().isForbidden());
 
@@ -195,7 +239,7 @@ class ReservationOrderApiIntegrationTest {
                         .with(SecurityMockMvcRequestPostProcessors.csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"items":[{"productId":%d,"quantity":1}]}
+                                {"deliveryAddress":"서울시 강남구 테헤란로 1","items":[{"productId":%d,"quantity":1}]}
                                 """.formatted(productId)))
                 .andExpect(status().isCreated());
     }

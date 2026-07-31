@@ -41,6 +41,9 @@ public class ReservationOrder {
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal totalAmount;
 
+    @Column(length = 255)
+    private String deliveryAddress;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -52,10 +55,11 @@ public class ReservationOrder {
     protected ReservationOrder() {
     }
 
-    public ReservationOrder(Member member) {
+    public ReservationOrder(Member member, String deliveryAddress) {
         this.member = member;
         this.status = ReservationOrderStatus.RESERVED;
         this.totalAmount = BigDecimal.ZERO;
+        this.deliveryAddress = deliveryAddress;
         this.createdAt = Instant.now();
     }
 
@@ -77,6 +81,7 @@ public class ReservationOrder {
     public Member getMember() { return member; }
     public ReservationOrderStatus getStatus() { return status; }
     public BigDecimal getTotalAmount() { return totalAmount; }
+    public String getDeliveryAddress() { return deliveryAddress; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getCancelledAt() { return cancelledAt; }
     public List<ReservationOrderItem> getItems() { return Collections.unmodifiableList(items); }
