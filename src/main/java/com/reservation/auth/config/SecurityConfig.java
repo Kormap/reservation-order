@@ -81,6 +81,7 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/products/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/inventories/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/v1/orders").hasRole("MEMBER")
                         .requestMatchers(

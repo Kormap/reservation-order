@@ -65,6 +65,10 @@ class ReservationOrderApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$['paths']['/api/v1/products']['post']['requestBody']['content']['application/json']['schema']['$ref']")
                         .value("#/components/schemas/ProductCreateRequest"))
+                .andExpect(jsonPath("$['components']['schemas']['ProductCreateRequest']['properties']['categoryCode']['enum'][0]")
+                        .value("APPLIANCE"))
+                .andExpect(jsonPath("$['components']['schemas']['ProductCreateRequest']['properties']['categoryCode']['enum'][8]")
+                        .value("DIGITAL"))
                 .andExpect(jsonPath("$['paths']['/api/v1/orders']['post']['requestBody']['content']['application/json']['schema']['$ref']")
                         .value("#/components/schemas/ReservationOrderCreateRequest"));
     }
@@ -129,7 +133,7 @@ class ReservationOrderApiIntegrationTest {
                         .with(SecurityMockMvcRequestPostProcessors.csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"한정 상품","price":10000,"initialStock":10}
+                                {"name":"한정 상품","description":"한정 수량 상품","price":10000,"categoryCode":"STATIONERY","initialStock":10}
                                 """))
                 .andExpect(status().isCreated())
                 .andReturn();
@@ -209,7 +213,7 @@ class ReservationOrderApiIntegrationTest {
                         .with(SecurityMockMvcRequestPostProcessors.csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"권한 상품","price":10000,"initialStock":10}
+                                {"name":"권한 상품","description":"권한 테스트 상품","price":10000,"categoryCode":"STATIONERY","initialStock":10}
                                 """))
                 .andExpect(status().isForbidden());
 
@@ -218,7 +222,7 @@ class ReservationOrderApiIntegrationTest {
                         .with(SecurityMockMvcRequestPostProcessors.csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"권한 상품","price":10000,"initialStock":10}
+                                {"name":"권한 상품","description":"권한 테스트 상품","price":10000,"categoryCode":"STATIONERY","initialStock":10}
                                 """))
                 .andExpect(status().isCreated())
                 .andReturn();
@@ -260,6 +264,37 @@ class ReservationOrderApiIntegrationTest {
                                 {"recipientName":"수령인","deliveryAddress":"서울시 강남구 테헤란로 1","contactPhoneNumber":"010-1234-5678","items":[{"productId":%d,"quantity":1}]}
                                 """.formatted(productId)))
                 .andExpect(status().isCreated());
+    }
+
+    @Test
+    void 관리자는_상품_정보와_판매_상태를_수정할_수_있다() throws Exception {
+        MockHttpSession adminSession = createAdminAndLogin("product-admin@example.com", "관리자");
+
+        MvcResult productResult = mockMvc.perform(post("/api/v1/products")
+                        .session(adminSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"기존 상품","description":"기존 설명","price":10000,"categoryCode":"STATIONERY","initialStock":10}
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long productId = objectMapper.readTree(productResult.getResponse().getContentAsString()).get("id").asLong();
+
+        mockMvc.perform(patch("/api/v1/products/{productId}", productId)
+                        .session(adminSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"수정 상품","description":"수정 설명","price":12000,"categoryCode":"BOOK","active":false}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("수정 상품"))
+                .andExpect(jsonPath("$.description").value("수정 설명"))
+                .andExpect(jsonPath("$.price").value(12000))
+                .andExpect(jsonPath("$.categoryCode").value("BOOK"))
+                .andExpect(jsonPath("$.categoryName").value("도서"))
+                .andExpect(jsonPath("$.active").value(false));
     }
 
     @Test

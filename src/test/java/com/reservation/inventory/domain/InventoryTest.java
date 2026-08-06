@@ -13,7 +13,7 @@ class InventoryTest {
 
     @Test
     void 재고를_차감하고_복구한다() {
-        Inventory inventory = new Inventory(new Product("상품", BigDecimal.TEN), 10);
+        Inventory inventory = new Inventory(new Product("상품", null, BigDecimal.TEN, "STATIONERY"), 10);
 
         inventory.decrease(4);
         inventory.increase(4);
@@ -23,7 +23,7 @@ class InventoryTest {
 
     @Test
     void 보유_수량보다_많이_차감하면_실패한다() {
-        Inventory inventory = new Inventory(new Product("상품", BigDecimal.TEN), 3);
+        Inventory inventory = new Inventory(new Product("상품", null, BigDecimal.TEN, "STATIONERY"), 3);
 
         assertThatThrownBy(() -> inventory.decrease(4))
                 .isInstanceOf(BusinessException.class)
@@ -34,7 +34,7 @@ class InventoryTest {
 
     @Test
     void 음수_재고는_생성할_수_없다() {
-        Product product = new Product("상품", BigDecimal.TEN);
+        Product product = new Product("상품", null, BigDecimal.TEN, "STATIONERY");
 
         assertThatThrownBy(() -> new Inventory(product, -1))
                 .isInstanceOf(IllegalArgumentException.class);
