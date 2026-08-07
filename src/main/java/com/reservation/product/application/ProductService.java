@@ -12,6 +12,7 @@ import com.reservation.product.api.ProductDTO.UpdateRequest;
 import com.reservation.product.domain.Product;
 import com.reservation.product.domain.ProductRepository;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -56,8 +57,8 @@ public class ProductService {
         return toResponse(product, inventory, findCategory(product.getCategoryCode()).getName());
     }
 
-    public List<ProductResponse> getAll() {
-        List<Product> products = productRepository.findAll();
+    public List<ProductResponse> getAll(String categoryCode, String productName) {
+        List<Product> products = productRepository.search(normalizeCategoryCode(categoryCode), normalizeProductName(productName));
         if (products.isEmpty()) {
             return List.of();
         }
@@ -103,6 +104,20 @@ public class ProductService {
             throw new BusinessException(ErrorCode.CATEGORY_NOT_FOUND);
         }
         return categoryName;
+    }
+
+    private String normalizeCategoryCode(String categoryCode) {
+        if (categoryCode == null || categoryCode.isBlank()) {
+            return null;
+        }
+        return categoryCode.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private String normalizeProductName(String productName) {
+        if (productName == null || productName.isBlank()) {
+            return null;
+        }
+        return productName.trim();
     }
 
     private ProductResponse toResponse(Product product, Inventory inventory, String categoryName) {

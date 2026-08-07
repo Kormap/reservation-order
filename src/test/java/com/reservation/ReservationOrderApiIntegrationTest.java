@@ -32,7 +32,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ReservationOrderApiIntegrationTest {
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
+            .withDatabaseName("reservation_order");
 
     @Container
     static final GenericContainer<?> REDIS = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
@@ -298,6 +299,153 @@ class ReservationOrderApiIntegrationTest {
     }
 
     @Test
+    void 상품_목록을_카테고리와_상품명으로_조회할_수_있다() throws Exception {
+        MockHttpSession adminSession = createAdminAndLogin("product-search-admin@example.com", "관리자");
+
+        mockMvc.perform(post("/api/v1/products")
+                        .session(adminSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"검색용 중성펜","description":"문구 검색 테스트","price":10000,"categoryCode":"STATIONERY","initialStock":10}
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/products")
+                        .session(adminSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"검색용 영단어","description":"도서 검색 테스트","price":12000,"categoryCode":"BOOK","initialStock":10}
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/v1/products")
+                        .session(adminSession)
+                        .param("categoryCode", "stationery")
+                        .param("productName", "중성펜"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].name").value("검색용 중성펜"))
+                .andExpect(jsonPath("$[0].categoryCode").value("STATIONERY"));
+
+        mockMvc.perform(get("/api/v1/products")
+                        .session(adminSession)
+                        .param("productName", "영단어"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].name").value("검색용 영단어"));
+    }
+
+    @Test
+    void 재고_부족과_중복_상품_요청은_주문을_생성하지_않는다() throws Exception {
+        MockHttpSession adminSession = createAdminAndLogin("order-failure-admin@example.com", "관리자");
+        MockHttpSession memberSession = signUpAndLogin("order-failure-member@example.com", "회원");
+        long productId = createProduct(adminSession, "주문 실패 테스트 상품", "STATIONERY", 2);
+
+        mockMv현c.perform(post("/api/v1/orders")
+                        .session(memberSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(orderRequest(productId, 3)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INSUFFICIENT_STOCK"));
+
+        mockMvc.perform(get("/api/v1/inventories/{productId}", productId)
+                        .session(memberSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(2));
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .session(memberSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"recipientName":"수령인","deliveryAddress":"서울시 강남구 테헤란로 1","contactPhoneNumber":"010-1234-5678","items":[{"productId":%d,"quantity":1},{"productId":%d,"quantity":1}]}
+                                """.formatted(productId, productId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+
+        mockMvc.perform(get("/api/v1/inventories/{productId}", productId)
+                        .session(memberSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(2));
+    }
+
+    @Test
+    void 다른_회원은_주문을_조회_취소할_수_없고_중복_취소는_실패한다() throws Exception {
+        MockHttpSession adminSession = createAdminAndLogin("order-owner-admin@example.com", "관리자");
+        MockHttpSession ownerSession = signUpAndLogin("order-owner@example.com", "주문자");
+        MockHttpSession otherSession = signUpAndLogin("other-member@example.com", "다른 회원");
+        long productId = createProduct(adminSession, "주문 소유자 테스트 상품", "BOOK", 10);
+
+        MvcResult orderResult = mockMvc.perform(post("/api/v1/orders")
+                        .session(ownerSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(orderRequest(productId, 2)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long orderId = objectMapper.readTree(orderResult.getResponse().getContentAsString()).get("id").asLong();
+
+        mockMvc.perform(get("/api/v1/orders/{orderId}", orderId).session(otherSession))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("ORDER_NOT_FOUND"));
+
+        mockMvc.perform(post("/api/v1/orders/{orderId}/cancel", orderId)
+                        .session(otherSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("ORDER_NOT_FOUND"));
+
+        mockMvc.perform(post("/api/v1/orders/{orderId}/cancel", orderId)
+                        .session(ownerSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+
+        mockMvc.perform(post("/api/v1/orders/{orderId}/cancel", orderId)
+                        .session(ownerSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ORDER_ALREADY_CANCELLED"));
+
+        mockMvc.perform(get("/api/v1/inventories/{productId}", productId)
+                        .session(ownerSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(10));
+    }
+
+    @Test
+    void 판매_중지된_상품은_주문할_수_없다() throws Exception {
+        MockHttpSession adminSession = createAdminAndLogin("inactive-product-admin@example.com", "관리자");
+        MockHttpSession memberSession = signUpAndLogin("inactive-product-member@example.com", "회원");
+        long productId = createProduct(adminSession, "판매 중지 테스트 상품", "FOOD", 10);
+
+        mockMvc.perform(patch("/api/v1/products/{productId}", productId)
+                        .session(adminSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"판매 중지 테스트 상품","description":"판매 중지 상품","price":10000,"categoryCode":"FOOD","active":false}
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .session(memberSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(orderRequest(productId, 1)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PRODUCT_INACTIVE"));
+
+        mockMvc.perform(get("/api/v1/inventories/{productId}", productId)
+                        .session(memberSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(10));
+    }
+
+    @Test
     void 공개_회원가입은_MEMBER로_등록한다() throws Exception {
         mockMvc.perform(post("/api/v1/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -334,5 +482,25 @@ class ReservationOrderApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return (MockHttpSession) loginResult.getRequest().getSession(false);
+    }
+
+    private long createProduct(MockHttpSession adminSession, String name, String categoryCode, int initialStock)
+            throws Exception {
+        MvcResult productResult = mockMvc.perform(post("/api/v1/products")
+                        .session(adminSession)
+                        .with(SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"%s","description":"테스트 상품 설명","price":10000,"categoryCode":"%s","initialStock":%d}
+                                """.formatted(name, categoryCode, initialStock)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return objectMapper.readTree(productResult.getResponse().getContentAsString()).get("id").asLong();
+    }
+
+    private String orderRequest(long productId, int quantity) {
+        return """
+                {"recipientName":"수령인","deliveryAddress":"서울시 강남구 테헤란로 1","contactPhoneNumber":"010-1234-5678","items":[{"productId":%d,"quantity":%d}]}
+                """.formatted(productId, quantity);
     }
 }
